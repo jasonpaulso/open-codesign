@@ -172,11 +172,29 @@ export function AddCustomProviderModal({
     }
   }
 
+  /**
+   * Re-seed the developer-role toggle from the wire's default unless the user
+   * has touched it. Called from every code path that changes `wire` so the
+   * auto-detect path can't strand an old default — typing `/responses` into
+   * the base URL flips the wire programmatically and used to leave the toggle
+   * at the previous wire's value, accidentally pinning a redundant override
+   * on save.
+   */
+  function maybeReseedDeveloperRole(nextWire: WireApi) {
+    if (!supportsDeveloperRoleTouched.current) {
+      setSupportsDeveloperRole(defaultSupportsDeveloperRole(nextWire));
+    }
+  }
+
   function handleBaseUrlChange(v: string) {
     setBaseUrl(v);
-    if (wireAuto) setWire(detectWireFromBaseUrl(v));
+    const nextWire = wireAuto ? detectWireFromBaseUrl(v) : wire;
+    if (wireAuto) {
+      setWire(nextWire);
+      maybeReseedDeveloperRole(nextWire);
+    }
     setTest({ kind: 'idle' });
-    scheduleDiscovery(v, wireAuto ? detectWireFromBaseUrl(v) : wire);
+    scheduleDiscovery(v, nextWire);
   }
 
   function handleApiKeyChange(v: string) {
@@ -187,12 +205,7 @@ export function AddCustomProviderModal({
     setWire(v);
     setWireAuto(false);
     scheduleDiscovery(baseUrl, v);
-    // Re-seed the developer-role toggle from the new wire's default unless the
-    // user has explicitly set it. Avoids stranding an "openai-chat" override
-    // value on a freshly-switched openai-responses wire.
-    if (!supportsDeveloperRoleTouched.current) {
-      setSupportsDeveloperRole(defaultSupportsDeveloperRole(v));
-    }
+    maybeReseedDeveloperRole(v);
   }
 
   function handleSupportsDeveloperRoleChange(v: boolean) {
