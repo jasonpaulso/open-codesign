@@ -143,3 +143,29 @@ export function applyResponsesRoleShaping(
 export function requiresResponsesRoleShaping(wire: WireApi | undefined): boolean {
   return wire === 'openai-responses';
 }
+
+/**
+ * Strip every `role: 'developer'` entry from the serialised payload, regardless
+ * of wire shape. Handles both `input[]` (Responses API) and `messages[]`
+ * (Chat Completions API). Used when the provider's `supportsDeveloperRole`
+ * capability is explicitly false — common for third-party gateways and self-
+ * hosted endpoints that reject the developer role with HTTP 400.
+ *
+ * pi-ai injects the developer role when reasoning is enabled. This filter
+ * lets users force-disable that injection per-provider without disabling
+ * reasoning entirely.
+ */
+export function stripDeveloperRole(payload: unknown): unknown {
+  if (typeof payload !== 'object' || payload === null) return payload;
+  const params = payload as {
+    input?: Array<{ role?: string }>;
+    messages?: Array<{ role?: string }>;
+  };
+  if (Array.isArray(params.input)) {
+    params.input = params.input.filter((entry) => entry.role !== 'developer');
+  }
+  if (Array.isArray(params.messages)) {
+    params.messages = params.messages.filter((entry) => entry.role !== 'developer');
+  }
+  return params;
+}

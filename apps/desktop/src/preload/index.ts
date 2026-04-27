@@ -71,6 +71,10 @@ export interface ProviderRow {
   defaultModel: string;
   hasKey: boolean;
   reasoningLevel?: ReasoningLevel;
+  /** Explicit override for the OpenAI `developer` role. When `false`, every
+   *  `role:developer` entry is stripped from outgoing LLM payloads. When
+   *  `undefined`, the wire-default is used. */
+  supportsDeveloperRole?: boolean;
   error?: 'decryption_failed' | string;
 }
 
@@ -291,6 +295,10 @@ const api = {
       queryParams?: Record<string, string>;
       envKey?: string;
       setAsActive: boolean;
+      /** Optional override for the OpenAI `developer` role. Omit to use the
+       *  wire default (true for openai-responses / openai-codex-responses,
+       *  false otherwise). Set to `false` for gateways that 400 on developer. */
+      supportsDeveloperRole?: boolean;
     }) => ipcRenderer.invoke('config:v1:add-provider', input) as Promise<OnboardingState>,
     updateProvider: (input: {
       id: string;
@@ -303,6 +311,9 @@ const api = {
       /** `null` explicitly clears the override and falls back to the model
        *  default; a level string sets it; omit to leave untouched. */
       reasoningLevel?: ReasoningLevel | null;
+      /** `null` clears the override and falls back to the wire default;
+       *  `true`/`false` pin it; omit to leave untouched. */
+      supportsDeveloperRole?: boolean | null;
       /** Non-empty string rotates the stored secret; empty string clears it
        *  (keyless providers); omit to leave the existing secret untouched. */
       apiKey?: string;

@@ -1661,6 +1661,9 @@ function ModelsTab() {
             builtin: editingRow.builtin,
             lockEndpoint: editingRow.builtin,
             ...(editingRow.maskedKey.length > 0 ? { keyMask: editingRow.maskedKey } : {}),
+            ...(editingRow.supportsDeveloperRole !== undefined
+              ? { supportsDeveloperRole: editingRow.supportsDeveloperRole }
+              : {}),
           }}
           initialSetAsActive={false}
         />

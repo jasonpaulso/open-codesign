@@ -246,7 +246,9 @@
         "save": "Salvar e continuar",
         "saveEdit": "Salvar alterações",
         "switchToDropdown": "Escolher da lista",
-        "switchToManual": "Digitar manualmente"
+        "switchToManual": "Digitar manualmente",
+        "supportsDeveloperRole": "Aceita papel `developer`",
+        "supportsDeveloperRoleHint": "Envia turnos `role:developer` quando o raciocínio está ativo. Desative para gateways ou endpoints self-hosted que rejeitam o papel developer com HTTP 400."
       },
       "import": {
         "action": "Importar",

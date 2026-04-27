@@ -24,6 +24,7 @@ import {
   applyResponsesRoleShaping,
   inferReasoning,
   requiresResponsesRoleShaping,
+  stripDeveloperRole,
 } from './wire-policy';
 
 /** Subset of pi-ai's `ThinkingLevel` we expose. Maps directly to its `reasoning`
@@ -317,12 +318,25 @@ export async function complete(
 
   // Covers both registry-looked-up models (piModel.api) and custom-endpoint
   // models where the wire is passed explicitly via opts.wire.
+  const payloadTransforms: Array<(payload: unknown) => unknown> = [];
   if (
     (requiresResponsesRoleShaping(opts.wire) || piModel.api === 'openai-responses') &&
     piContext.systemPrompt
   ) {
     const systemPrompt = piContext.systemPrompt;
-    piOpts.onPayload = (payload) => applyResponsesRoleShaping(payload, systemPrompt);
+    payloadTransforms.push((payload) => applyResponsesRoleShaping(payload, systemPrompt));
+  }
+  // Providers that explicitly disable developer-role support (custom gateways,
+  // self-hosted endpoints, OpenAI-compatible relays that 400 on `role:developer`)
+  // get the developer entries scrubbed from the outgoing payload regardless of
+  // wire. pi-ai only emits developer when reasoning is on, so this is a no-op
+  // for non-reasoning calls.
+  if (opts.capabilities?.supportsDeveloperRole === false) {
+    payloadTransforms.push(stripDeveloperRole);
+  }
+  if (payloadTransforms.length > 0) {
+    piOpts.onPayload = (payload) =>
+      payloadTransforms.reduce((acc, transform) => transform(acc), payload);
   }
 
   // sub2api / claude2api gateways 403 requests without claude-cli identity

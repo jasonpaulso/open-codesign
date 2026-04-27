@@ -39,6 +39,9 @@ interface Props {
      *  placeholder so user knows there's a stored key, and an empty submit
      *  doesn't wipe it. */
     keyMask?: string;
+    /** Explicit override for the OpenAI `developer` role. `undefined` means
+     *  no override is stored; the toggle then renders the wire default. */
+    supportsDeveloperRole?: boolean;
   };
 }
 
@@ -53,6 +56,16 @@ type DiscoveryState =
   | { kind: 'discovering' }
   | { kind: 'found'; models: string[] }
   | { kind: 'failed' };
+
+/**
+ * Wire default for the `developer` role capability. Mirrors the table in
+ * `defaultProviderCapabilities` (packages/shared/src/config.ts) — only the
+ * Responses-shaped wires accept developer-role turns by default. We duplicate
+ * the rule in the renderer to seed the toggle without a round-trip.
+ */
+function defaultSupportsDeveloperRole(wire: WireApi): boolean {
+  return wire === 'openai-responses' || wire === 'openai-codex-responses';
+}
 
 /** Priority-ordered model selection after a successful discovery. */
 function pickBestModel(models: string[]): string {
@@ -97,6 +110,18 @@ export function AddCustomProviderModal({
   // In edit mode we trust the stored wire; in create mode we only auto-detect
   // if the caller didn't pin one.
   const [wireAuto, setWireAuto] = useState(!isEdit && initialValues?.wire === undefined);
+  // Developer-role capability override. Seeded from the stored explicit value
+  // when editing; falls back to the wire default in create mode (or when the
+  // edited provider has no override). Treat the stored field as the source of
+  // truth: the user can flip the toggle to pin a different value.
+  const [supportsDeveloperRole, setSupportsDeveloperRole] = useState<boolean>(
+    editTarget?.supportsDeveloperRole ??
+      defaultSupportsDeveloperRole(editTarget?.wire ?? initialValues?.wire ?? 'openai-chat'),
+  );
+  // Track whether the user has touched the toggle. Untouched + matches default
+  // → omit from the IPC payload (so we don't pin a default-matching override
+  // that would survive a later wire change).
+  const supportsDeveloperRoleTouched = useRef(false);
   const [test, setTest] = useState<TestState>({ kind: 'idle' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,11 +172,29 @@ export function AddCustomProviderModal({
     }
   }
 
+  /**
+   * Re-seed the developer-role toggle from the wire's default unless the user
+   * has touched it. Called from every code path that changes `wire` so the
+   * auto-detect path can't strand an old default — typing `/responses` into
+   * the base URL flips the wire programmatically and used to leave the toggle
+   * at the previous wire's value, accidentally pinning a redundant override
+   * on save.
+   */
+  function maybeReseedDeveloperRole(nextWire: WireApi) {
+    if (!supportsDeveloperRoleTouched.current) {
+      setSupportsDeveloperRole(defaultSupportsDeveloperRole(nextWire));
+    }
+  }
+
   function handleBaseUrlChange(v: string) {
     setBaseUrl(v);
-    if (wireAuto) setWire(detectWireFromBaseUrl(v));
+    const nextWire = wireAuto ? detectWireFromBaseUrl(v) : wire;
+    if (wireAuto) {
+      setWire(nextWire);
+      maybeReseedDeveloperRole(nextWire);
+    }
     setTest({ kind: 'idle' });
-    scheduleDiscovery(v, wireAuto ? detectWireFromBaseUrl(v) : wire);
+    scheduleDiscovery(v, nextWire);
   }
 
   function handleApiKeyChange(v: string) {
@@ -162,6 +205,12 @@ export function AddCustomProviderModal({
     setWire(v);
     setWireAuto(false);
     scheduleDiscovery(baseUrl, v);
+    maybeReseedDeveloperRole(v);
+  }
+
+  function handleSupportsDeveloperRoleChange(v: boolean) {
+    setSupportsDeveloperRole(v);
+    supportsDeveloperRoleTouched.current = true;
   }
 
   function handleModelSelect(v: string) {
@@ -215,10 +264,20 @@ export function AddCustomProviderModal({
         }
         const typedKey = apiKey.trim();
         if (typedKey.length > 0) update.apiKey = typedKey;
+        // Developer-role capability: send `null` to clear when the user
+        // matches the wire default exactly (so we don't pin a redundant
+        // override), otherwise pin the explicit value. Only emit when it
+        // differs from what's currently stored.
+        const wireDefault = defaultSupportsDeveloperRole(wire);
+        const desiredOverride: boolean | null =
+          supportsDeveloperRole === wireDefault ? null : supportsDeveloperRole;
+        const currentOverride = editTarget.supportsDeveloperRole ?? null;
+        if (desiredOverride !== currentOverride) update.supportsDeveloperRole = desiredOverride;
         await window.codesign.config.updateProvider(update);
       } else {
         const slug = slugify(name);
         const id = `custom-${slug}-${Date.now().toString(36).slice(-4)}`;
+        const wireDefault = defaultSupportsDeveloperRole(wire);
         await window.codesign.config.addProvider({
           id,
           name: name.trim() || id,
@@ -227,6 +286,9 @@ export function AddCustomProviderModal({
           apiKey: apiKey.trim(),
           defaultModel: defaultModel.trim(),
           setAsActive: initialSetAsActive,
+          // Only persist an explicit override when it diverges from the wire
+          // default — keeps the on-disk capabilities object minimal.
+          ...(supportsDeveloperRole !== wireDefault ? { supportsDeveloperRole } : {}),
         });
       }
       onSave();
@@ -416,6 +478,20 @@ export function AddCustomProviderModal({
               )}
             </div>
           )}
+        </Field>
+
+        <Field label={t('settings.providers.custom.supportsDeveloperRole')}>
+          <label className="inline-flex items-start gap-2 cursor-pointer text-[var(--text-xs)]">
+            <input
+              type="checkbox"
+              checked={supportsDeveloperRole}
+              onChange={(e) => handleSupportsDeveloperRoleChange(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]"
+            />
+            <span className="text-[var(--color-text-secondary)] leading-5">
+              {t('settings.providers.custom.supportsDeveloperRoleHint')}
+            </span>
+          </label>
         </Field>
 
         <div className="flex items-center gap-2">

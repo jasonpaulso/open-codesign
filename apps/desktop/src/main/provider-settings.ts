@@ -31,6 +31,11 @@ export interface ProviderRow {
   defaultModel: string;
   hasKey: boolean;
   reasoningLevel?: ReasoningLevel;
+  /** Explicit override of the wire-default for the OpenAI `developer` role.
+   *  `true` = include developer turns in outgoing payloads.
+   *  `false` = strip every `role:developer` entry (gateways that 400 on it).
+   *  `undefined` = no override stored; runtime falls back to the wire default. */
+  supportsDeveloperRole?: boolean;
   error?: 'decryption_failed' | string;
 }
 
@@ -153,6 +158,9 @@ export function toProviderRows(
       // absent secret is a legitimate state, not a "missing key" warning.
       hasKey: ref !== undefined || isKeylessProviderAllowed(provider, entry),
       ...(entry?.reasoningLevel !== undefined ? { reasoningLevel: entry.reasoningLevel } : {}),
+      ...(entry?.capabilities?.supportsDeveloperRole !== undefined
+        ? { supportsDeveloperRole: entry.capabilities.supportsDeveloperRole }
+        : {}),
       ...(rowError !== undefined ? { error: rowError } : {}),
     });
   }

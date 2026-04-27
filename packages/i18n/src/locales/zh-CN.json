@@ -280,7 +280,9 @@
         "test": "测试连接",
         "testOk": "正常 — 共 {{count}} 个模型",
         "save": "保存并继续",
-        "saveEdit": "保存修改"
+        "saveEdit": "保存修改",
+        "supportsDeveloperRole": "支持 developer 角色",
+        "supportsDeveloperRoleHint": "推理开启时发送 `role:developer` 消息。若网关或自托管端点对 developer 角色返回 HTTP 400，请关闭此项。"
       },
       "import": {
         "action": "导入",

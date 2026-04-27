@@ -36,4 +36,33 @@ describe('AddCustomProviderModal', () => {
     expect(html).not.toContain('settings.providers.custom.compatibilityHintTitle');
     expect(html).not.toContain('settings.providers.custom.compatibilityHintBody');
   });
+
+  it('renders the developer-role toggle in create mode', () => {
+    const html = renderToStaticMarkup(
+      <AddCustomProviderModal onSave={() => undefined} onClose={() => undefined} />,
+    );
+    expect(html).toContain('settings.providers.custom.supportsDeveloperRole');
+    expect(html).toContain('settings.providers.custom.supportsDeveloperRoleHint');
+  });
+
+  it('seeds the developer-role toggle from the stored capability when editing', () => {
+    const html = renderToStaticMarkup(
+      <AddCustomProviderModal
+        onSave={() => undefined}
+        onClose={() => undefined}
+        editTarget={{
+          id: 'custom-foo',
+          name: 'Foo',
+          baseUrl: 'https://gateway.example.com/v1',
+          wire: 'openai-chat',
+          defaultModel: 'gpt-5',
+          builtin: false,
+          lockEndpoint: false,
+          supportsDeveloperRole: true,
+        }}
+      />,
+    );
+    // checkbox checked attribute reflects the stored override (true here).
+    expect(html).toMatch(/type="checkbox"[^>]*checked/);
+  });
 });

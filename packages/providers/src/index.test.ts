@@ -695,6 +695,120 @@ describe('complete — openai-responses strict instructions', () => {
   });
 });
 
+describe('complete — capabilities.supportsDeveloperRole override', () => {
+  function stubAssistantResponse(api: string, model: string) {
+    return async (_model: unknown, _context: unknown, _opts: unknown) => ({
+      role: 'assistant' as const,
+      content: [{ type: 'text' as const, text: 'ok' }],
+      api,
+      provider: 'openai',
+      model,
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: 'stop' as const,
+      timestamp: Date.now(),
+    });
+  }
+
+  it('attaches onPayload that strips developer entries when capability is false (chat wire)', async () => {
+    let capturedOnPayload:
+      | ((payload: unknown) => unknown | Promise<unknown | undefined>)
+      | undefined;
+    completeSimpleMock.mockImplementationOnce(async (_model, _context, opts) => {
+      capturedOnPayload = opts.onPayload;
+      return stubAssistantResponse('openai-chat', 'gpt-5')(_model, _context, opts);
+    });
+
+    await complete(
+      { provider: 'custom-foo', modelId: 'gpt-5' },
+      [{ role: 'user', content: 'hi' }],
+      {
+        apiKey: 'sk-test',
+        wire: 'openai-chat',
+        baseUrl: 'https://gateway.example.com/v1',
+        capabilities: { supportsDeveloperRole: false },
+      },
+    );
+
+    expect(capturedOnPayload).toBeDefined();
+    const mutated = (await capturedOnPayload?.({
+      messages: [
+        { role: 'system', content: 'sys' },
+        { role: 'developer', content: 'gone' },
+        { role: 'user', content: 'hi' },
+      ],
+    })) as { messages: Array<{ role: string }> };
+    expect(mutated.messages.map((m) => m.role)).toEqual(['system', 'user']);
+  });
+
+  it('does not attach onPayload when capability is true and wire is openai-chat (no systemPrompt)', async () => {
+    completeSimpleMock.mockImplementationOnce(async (_model, _context, opts) => {
+      expect(opts.onPayload).toBeUndefined();
+      return stubAssistantResponse('openai-chat', 'gpt-5')(_model, _context, opts);
+    });
+
+    await complete(
+      { provider: 'custom-foo', modelId: 'gpt-5' },
+      [{ role: 'user', content: 'hi' }],
+      {
+        apiKey: 'sk-test',
+        wire: 'openai-chat',
+        baseUrl: 'https://gateway.example.com/v1',
+        capabilities: { supportsDeveloperRole: true },
+      },
+    );
+  });
+
+  it('composes stripDeveloperRole with applyResponsesRoleShaping when both apply', async () => {
+    let capturedOnPayload:
+      | ((payload: unknown) => unknown | Promise<unknown | undefined>)
+      | undefined;
+    completeSimpleMock.mockImplementationOnce(async (_model, _context, opts) => {
+      capturedOnPayload = opts.onPayload;
+      return stubAssistantResponse('openai-responses', 'gpt-5.1')(_model, _context, opts);
+    });
+
+    await complete(
+      { provider: 'custom-foo', modelId: 'gpt-5.1' },
+      [
+        { role: 'system', content: 'You are open-codesign.' },
+        { role: 'user', content: 'hi' },
+      ],
+      {
+        apiKey: 'sk-test',
+        wire: 'openai-responses',
+        baseUrl: 'https://strict-responses.example/v1',
+        // Even on the responses wire a user can pin the override off — the
+        // existing role-shaping still strips system/developer from input[],
+        // and the new strip helper layers on top to ensure no developer entry
+        // can survive (e.g. if a future pi-ai version emits it elsewhere).
+        capabilities: { supportsDeveloperRole: false },
+      },
+    );
+
+    expect(capturedOnPayload).toBeDefined();
+    const mutated = (await capturedOnPayload?.({
+      input: [
+        { role: 'system', content: 'sys' },
+        { role: 'developer', content: 'gone' },
+        { role: 'user', content: [{ type: 'input_text', text: 'hi' }] },
+      ],
+    })) as {
+      instructions?: string;
+      input: Array<{ role: string }>;
+    };
+
+    expect(mutated.instructions).toBe('You are open-codesign.');
+    expect(mutated.input.map((entry) => entry.role)).toEqual(['user']);
+  });
+});
+
 describe('inferReasoning', () => {
   it('returns false for Qwen DashScope via openai-chat (#183)', () => {
     expect(
