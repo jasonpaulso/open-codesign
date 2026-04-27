@@ -4,6 +4,7 @@ import {
   applyResponsesRoleShaping,
   inferReasoning,
   requiresResponsesRoleShaping,
+  stripDeveloperRole,
 } from './wire-policy';
 
 // ── inferReasoning ────────────────────────────────────────────────────────────
@@ -256,5 +257,63 @@ describe('requiresResponsesRoleShaping', () => {
     expect(requiresResponsesRoleShaping('openai-chat')).toBe(false);
     expect(requiresResponsesRoleShaping('openai-codex-responses')).toBe(false);
     expect(requiresResponsesRoleShaping(undefined)).toBe(false);
+  });
+});
+
+// ── stripDeveloperRole ────────────────────────────────────────────────────────
+
+describe('stripDeveloperRole', () => {
+  it('removes developer entries from messages[] (chat-completions shape)', () => {
+    const payload = {
+      model: 'gpt-5',
+      messages: [
+        { role: 'system', content: 'sys' },
+        { role: 'developer', content: 'dev guidance' },
+        { role: 'user', content: 'hi' },
+      ],
+    };
+    const result = stripDeveloperRole(payload) as {
+      messages: Array<{ role: string }>;
+    };
+    expect(result.messages.map((m) => m.role)).toEqual(['system', 'user']);
+  });
+
+  it('removes developer entries from input[] (responses shape)', () => {
+    const payload = {
+      input: [
+        { role: 'developer', content: 'dev guidance' },
+        { role: 'user', content: [{ type: 'input_text', text: 'hi' }] },
+      ],
+    };
+    const result = stripDeveloperRole(payload) as {
+      input: Array<{ role: string }>;
+    };
+    expect(result.input.map((entry) => entry.role)).toEqual(['user']);
+  });
+
+  it('passes through payloads without messages or input arrays', () => {
+    const payload = { model: 'something', other: 1 };
+    expect(stripDeveloperRole(payload)).toBe(payload);
+  });
+
+  it('returns the value unchanged for non-object inputs', () => {
+    expect(stripDeveloperRole(null)).toBe(null);
+    expect(stripDeveloperRole('string')).toBe('string');
+  });
+
+  it('keeps system, user, assistant, and tool entries intact', () => {
+    const payload = {
+      messages: [
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: 'ack' },
+        { role: 'tool', content: 'tool result' },
+        { role: 'developer', content: 'gone' },
+      ],
+    };
+    const result = stripDeveloperRole(payload) as {
+      messages: Array<{ role: string }>;
+    };
+    expect(result.messages.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'tool']);
   });
 });

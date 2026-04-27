@@ -280,7 +280,9 @@
         "test": "Test connection",
         "testOk": "OK — {{count}} models available",
         "save": "Save & continue",
-        "saveEdit": "Save changes"
+        "saveEdit": "Save changes",
+        "supportsDeveloperRole": "Supports developer role",
+        "supportsDeveloperRoleHint": "Send `role:developer` turns when reasoning is enabled. Disable for gateways or self-hosted endpoints that reject the developer role with HTTP 400."
       },
       "import": {
         "action": "Import",

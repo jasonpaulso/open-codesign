@@ -156,6 +156,37 @@ describe('toProviderRows', () => {
       maskedKey: '',
     });
   });
+
+  it('surfaces an explicit supportsDeveloperRole override on the row', () => {
+    const cfg = makeCfg({
+      provider: 'openai',
+      modelPrimary: 'gpt-4o',
+      secrets: { openai: { ciphertext: 'enc' }, 'custom-foo': { ciphertext: 'enc' } },
+      providers: {
+        'custom-foo': {
+          id: 'custom-foo',
+          name: 'Foo',
+          builtin: false,
+          wire: 'openai-chat',
+          baseUrl: 'https://gateway.example.com/v1',
+          defaultModel: 'gpt-5',
+          capabilities: { supportsDeveloperRole: true },
+        },
+      },
+    });
+    const rows = toProviderRows(cfg, () => 'sk-test-token-1234567890');
+    expect(rows.find((r) => r.provider === 'custom-foo')?.supportsDeveloperRole).toBe(true);
+  });
+
+  it('omits supportsDeveloperRole on rows without an explicit override', () => {
+    const cfg = makeCfg({
+      provider: 'openai',
+      modelPrimary: 'gpt-4o',
+      secrets: { openai: { ciphertext: 'enc' } },
+    });
+    const rows = toProviderRows(cfg, () => 'sk-test-token-1234567890');
+    expect(rows.find((r) => r.provider === 'openai')?.supportsDeveloperRole).toBeUndefined();
+  });
 });
 
 describe('assertProviderHasStoredSecret', () => {

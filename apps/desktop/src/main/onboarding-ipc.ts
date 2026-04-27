@@ -11,6 +11,7 @@ import {
   type GeminiDetectionMeta,
   type OnboardingState,
   type OpencodeDetectionMeta,
+  type ProviderCapabilities,
   type ProviderEntry,
   type ReasoningLevel,
   ReasoningLevelSchema,
@@ -559,6 +560,9 @@ interface AddCustomProviderInput {
   queryParams?: Record<string, string>;
   envKey?: string;
   setAsActive: boolean;
+  /** Explicit override for the OpenAI `developer` role. When omitted, falls
+   *  back to the wire default in `defaultProviderCapabilities`. */
+  supportsDeveloperRole?: boolean;
 }
 
 function parseAddProviderPayload(raw: unknown): AddCustomProviderInput {
@@ -625,10 +629,17 @@ function parseAddProviderPayload(raw: unknown): AddCustomProviderInput {
   if (typeof r['envKey'] === 'string' && (r['envKey'] as string).length > 0) {
     out.envKey = r['envKey'] as string;
   }
+  if (typeof r['supportsDeveloperRole'] === 'boolean') {
+    out.supportsDeveloperRole = r['supportsDeveloperRole'];
+  }
   return out;
 }
 
 async function runAddCustomProvider(input: AddCustomProviderInput): Promise<OnboardingState> {
+  const capabilities: ProviderCapabilities | undefined =
+    input.supportsDeveloperRole !== undefined
+      ? { supportsDeveloperRole: input.supportsDeveloperRole }
+      : undefined;
   const entry: ProviderEntry = {
     id: input.id,
     name: input.name,
@@ -639,6 +650,7 @@ async function runAddCustomProvider(input: AddCustomProviderInput): Promise<Onbo
     ...(input.httpHeaders !== undefined ? { httpHeaders: input.httpHeaders } : {}),
     ...(input.queryParams !== undefined ? { queryParams: input.queryParams } : {}),
     ...(input.envKey !== undefined ? { envKey: input.envKey } : {}),
+    ...(capabilities !== undefined ? { capabilities } : {}),
   };
   const secretRef = buildSecretRef(input.apiKey);
   const nextProviders = { ...(cachedConfig?.providers ?? {}), [entry.id]: entry };
@@ -671,6 +683,11 @@ interface UpdateProviderInput {
   queryParams?: Record<string, string>;
   wire?: WireApi;
   reasoningLevel?: ReasoningLevel | null;
+  /** Tri-state for the OpenAI `developer` role override:
+   *   `undefined` = leave the existing capability untouched.
+   *   `null`      = drop the explicit override; falls back to the wire default.
+   *   `true`/`false` = pin the override. */
+  supportsDeveloperRole?: boolean | null;
   /** When present AND non-empty, re-encrypt and replace the stored secret.
    *  Empty string means "clear stored secret" for providers that became
    *  keyless (e.g. switched to local Ollama). `undefined` means "leave alone". */
@@ -726,6 +743,11 @@ function parseUpdateProviderPayload(raw: unknown): UpdateProviderInput {
     const parsed = ReasoningLevelSchema.safeParse(r['reasoningLevel']);
     if (parsed.success) out.reasoningLevel = parsed.data;
   }
+  if (r['supportsDeveloperRole'] === null) {
+    out.supportsDeveloperRole = null;
+  } else if (typeof r['supportsDeveloperRole'] === 'boolean') {
+    out.supportsDeveloperRole = r['supportsDeveloperRole'];
+  }
   if (typeof r['apiKey'] === 'string') out.apiKey = r['apiKey'];
   return out;
 }
@@ -761,6 +783,18 @@ async function runUpdateProvider(input: UpdateProviderInput): Promise<Onboarding
     updated.reasoningLevel = undefined;
   } else if (input.reasoningLevel !== undefined) {
     updated.reasoningLevel = input.reasoningLevel;
+  }
+  // supportsDeveloperRole follows the same tri-state pattern but lives nested
+  // under `capabilities`. Cleanly clearing the field means rebuilding the
+  // capabilities object without the key (so the `Object.keys.length` check
+  // can collapse a now-empty capabilities map back to `undefined`).
+  if (input.supportsDeveloperRole !== undefined) {
+    const { supportsDeveloperRole: _existing, ...restCaps } = updated.capabilities ?? {};
+    const nextCaps: ProviderCapabilities =
+      input.supportsDeveloperRole === null
+        ? restCaps
+        : { ...restCaps, supportsDeveloperRole: input.supportsDeveloperRole };
+    updated.capabilities = Object.keys(nextCaps).length > 0 ? nextCaps : undefined;
   }
   // Secret rotation: only touch secrets when the caller explicitly supplied
   // an apiKey field. Empty string clears the secret (keyless providers);
