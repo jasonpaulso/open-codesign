@@ -24,7 +24,7 @@ These are project commitments, not preferences:
 4. Every design has a workspace. No sealed/open split in v0.2. The workspace filesystem is the source of truth for artifacts and assets.
 5. MIT-compatible permissive licenses only. Reject GPL, AGPL, SSPL, proprietary deps, and unclear copied assets. Check licenses before adding scaffolds, brand refs, or package deps.
 6. Lazy-load heavy features. PPTX export, web capture, scaffolds, skills, brand refs, and image generation must load on demand rather than at app start.
-7. Reuse pi primitives first. `pi-coding-agent` owns sessions, built-in tools, bash execution, event streaming, model registry, provider registration, and capability data unless a design-specific need proves otherwise.
+7. Reuse pi primitives first. `pi-agent-core` owns sessions, built-in tools, bash execution, event streaming, model registry, provider registration, and capability data unless a design-specific need proves otherwise.
 8. Brand values are data, not model memory. Use `DESIGN.md`, user files, official CSS/SVG/screenshots, or brand URLs. Do not invent brand hex values from memory.
 9. PRs should satisfy Principles 5b: compatible, upgradeable, no bloat, elegant.
 
@@ -32,7 +32,7 @@ These are project commitments, not preferences:
 
 ### Agent Runtime
 
-- Use `pi-coding-agent` and `pi-ai`.
+- Use the pi runtime: `@mariozechner/pi-agent-core` and `@mariozechner/pi-ai` (referenced as `pi-agent-core` / `pi-ai`). These are pinned in `packages/core/package.json`.
 - Use pi built-ins for `read`, `write`, `edit`, `bash`, `grep`, `find`, and `ls`.
 - Gate tools through the pi `tool_call` hook and the Open CoDesign permission UI.
 - Read capabilities from pi `Model<T>` fields such as `input`, `reasoning`, `cost`, `contextWindow`, and `maxTokens`.
@@ -73,14 +73,14 @@ Do not reintroduce a verifier subagent, snip tool, custom bash tool, custom list
 
 ## Stack and Conventions
 
-- Package manager: `pnpm` only. Never use `npm` or `yarn`.
-- Build orchestration: Turborepo.
-- Lint and format: Biome.
-- Tests: Vitest for unit tests, Playwright for E2E.
-- TypeScript: strict mode, `verbatimModuleSyntax`, bundler resolution, no `any`.
-- Commits: Conventional Commits.
-- Versioning: Changesets. Do not hand-edit `CHANGELOG.md`.
-- Node: 22 LTS, pinned by `.nvmrc` and `engines`.
+- Package manager: `pnpm` only, pinned via `packageManager` in root `package.json`. Never use `npm` or `yarn`.
+- Build orchestration: Turborepo (`turbo.json` defines `build`, `dev`, `test`, `typecheck`, `lint`).
+- Lint and format: Biome (`biome.json`). `noConsole: error` is enforced for `apps/desktop/src/main/**`, `packages/core/src/**`, `packages/providers/src/**`, `packages/exporters/src/**`, and `packages/shared/src/**`.
+- Tests: Vitest for unit tests (`vitest run --passWithNoTests` per package). E2E harness is not currently wired up; do not invent a `test:e2e` script.
+- TypeScript: strict mode, `verbatimModuleSyntax`, bundler resolution, no `any` (Biome `noExplicitAny: error`).
+- Commits: Conventional Commits, enforced by `commitlint` via Husky.
+- Versioning: Changesets (`.changeset/`). Do not hand-edit `CHANGELOG.md`.
+- Node: 22 LTS, pinned by `.nvmrc` and `engines.node`.
 - Exact package versions live in `package.json`, workspace manifests, and `pnpm-lock.yaml`. Read those files instead of trusting stale docs.
 
 ### Frontend
@@ -98,19 +98,27 @@ Do not reintroduce a verifier subagent, snip tool, custom bash tool, custom list
 
 ```text
 apps/
-  desktop/           # Electron app shell, main process, renderer
+  desktop/           # Electron app shell: src/main, src/preload, src/renderer
 packages/
-  core/              # Agent orchestration, prompts, design tools
-  providers/         # pi integration and provider compatibility shims
-  runtime/           # Sandbox renderer and preview runtime
-  ui/                # Shared app UI tokens and components
+  core/              # Agent orchestration, prompts, design tools, pi integration
+  providers/         # pi provider registration and compatibility shims
+  runtime/           # Sandbox renderer and preview runtime (with vendored deps)
+  ui/                # Shared app UI tokens, components, fonts, Tailwind preset
   artifacts/         # Artifact schemas and bundle formats
   exporters/         # PDF / PPTX / ZIP exporters, lazy-loaded
   templates/         # Built-in examples and starter templates
   shared/            # Shared types, utils, schemas
-docs/                # Mostly maintainer-local plans/research; many files are gitignored
+  i18n/              # Locale strings and i18n helpers
+website/             # VitePress public docs site (not part of the desktop build)
+packaging/           # Homebrew, Scoop, winget, flatpak manifests + update-shas.sh
+scripts/             # Repo-level scripts (e.g. smoke-models.ts)
+docs/                # Mostly maintainer-local plans/research; gitignored except docs/research/
 examples/            # Public demo reproductions
+.changeset/          # Pending changesets
+.github/             # CI workflows, issue templates, agent prompts
 ```
+
+`pnpm-workspace.yaml` lists `apps/*`, `packages/*`, and `website` as workspaces.
 
 ## Doing Tasks Here
 
@@ -151,12 +159,26 @@ Do not hide blocked tool calls. Show the command, path, tier, and reason.
 ## Useful Commands
 
 ```bash
-pnpm i
-pnpm dev
-pnpm test
-pnpm test:e2e
-pnpm lint
-pnpm typecheck
-pnpm build
-pnpm changeset
+pnpm i                  # install workspace deps
+pnpm dev                # turbo run dev (Electron renderer + main, persistent)
+pnpm test               # turbo run test (Vitest in each package)
+pnpm lint               # biome check .
+pnpm lint:fix           # biome check --write .
+pnpm format             # biome format --write .
+pnpm typecheck          # turbo run typecheck
+pnpm build              # turbo run build (electron-vite + electron-builder)
+pnpm smoke              # tsx scripts/smoke-models.ts (provider parity smoke)
+pnpm docs:dev           # VitePress dev for website/
+pnpm docs:build         # VitePress build for website/
+pnpm changeset          # author a changeset
 ```
+
+Per-package commands run via Turbo. The desktop app has app-local scripts (`pnpm --filter @open-codesign/desktop dev`, `build`, `release`) that wrap `electron-vite` and `electron-builder`.
+
+## Claude Code Specific Notes
+
+- Slash commands and hooks live under `.claude/`. `.claude/workspace/` and `.claude/projects/` are gitignored — use them for scratch planning files, not committed docs.
+- The repo also ships agent prompts under `.github/prompts/` (e.g. `codex-pr-review.md`). When updating shared agent guidance, prefer editing `AGENTS.md` and mirroring the change here so the two stay in sync.
+- Honor the canonical guide rule: if `AGENTS.md` and this file disagree, treat `AGENTS.md` as the source of truth and reconcile.
+- When a task needs more than five tool calls or touches more than three files, write a short plan in `.claude/workspace/` before editing.
+- For UI work, run `pnpm dev` and verify the change in the running Electron window before reporting it complete; the linter and Vitest suite do not catch visual regressions.
